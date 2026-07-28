@@ -522,7 +522,10 @@ namespace WotlkBot
                             float rmax = a.Length > 5
                                 ? Single.Parse(a[5], System.Globalization.CultureInfo.InvariantCulture)
                                 : rmin + 20.0f;
-                            if (!wclient.MoveToRange(target, rmin, rmax))
+                            float rbear = a.Length > 6
+                                ? Single.Parse(a[6], System.Globalization.CultureInfo.InvariantCulture)
+                                : 0.0f;
+                            if (!wclient.MoveToRange(target, rmin, rmax, 8000, rbear))
                                 System.Console.WriteLine("PARSE: could not reach the range band — "
                                     + "casting anyway, but treat a refusal as POSITIONING, not a "
                                     + "dead spell");
@@ -541,8 +544,11 @@ namespace WotlkBot
                         float mx = a.Length > 2
                             ? Single.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture)
                             : mn + 20.0f;
-                        System.Console.WriteLine("PARSE: moveto " + (wclient.MoveToRange(target, mn, mx)
-                            ? "IN BAND" : "FAILED"));
+                        float mbear = a.Length > 3
+                            ? Single.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture)
+                            : 0.0f;
+                        System.Console.WriteLine("PARSE: moveto "
+                            + (wclient.MoveToRange(target, mn, mx, 8000, mbear) ? "IN BAND" : "FAILED"));
                     }
                     else if (a[0] == "attack")
                     {

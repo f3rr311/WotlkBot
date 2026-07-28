@@ -89,7 +89,17 @@ namespace WotlkClient.Clients
         /// at the destination. An instant relocation is exactly what an anticheat module flags,
         /// and this server runs one.
         /// </remarks>
-        public bool MoveToRange(Object target, float minRange, float maxRange, int timeoutMs = 8000)
+        /// <param name="bearingDeg">
+        /// Rotate the destination this many degrees around the target instead of retreating along
+        /// the straight line away from it.
+        ///
+        /// MEASURED 2026-07-28: backing straight off traded 128 TOO_CLOSE for
+        /// 47 SPELL_FAILED_LINE_OF_SIGHT — the retreat walked the bot behind scenery. Repositioning
+        /// is not a scalar; a distance alone can be correct and still be unusable. The caller
+        /// retries a few bearings because only it can see the cast result.
+        /// </param>
+        public bool MoveToRange(Object target, float minRange, float maxRange, int timeoutMs = 8000,
+                                float bearingDeg = 0.0f)
         {
             if (player == null || player.Position == null || target == null || target.Position == null)
             {
@@ -123,6 +133,16 @@ namespace WotlkClient.Clients
             if (dist < 0.01f) { dx = 1.0f; dy = 0.0f; dist = 1.0f; }
 
             float ux = dx / dist, uy = dy / dist;              // unit vector target -> player
+            if (Math.Abs(bearingDeg) > 0.01f)
+            {
+                // Swing the destination around the target. Same distance, different side — which
+                // is what a line-of-sight failure actually needs.
+                double rad = bearingDeg * Math.PI / 180.0;
+                double c = Math.Cos(rad), s = Math.Sin(rad);
+                float rx = (float)(ux * c - uy * s);
+                float ry = (float)(ux * s + uy * c);
+                ux = rx; uy = ry;
+            }
             float destX = target.Position.X + ux * want;
             float destY = target.Position.Y + uy * want;
             float destZ = player.Position.Z;                   // dummies are on flat ground
