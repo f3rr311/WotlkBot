@@ -259,16 +259,18 @@ namespace WotlkClient.Clients
             UInt64 guid = 0;
 
             byte guidmark = stream.ReadByte();
-            byte shift = 0;
 
+            // Each set mask bit i supplies the byte at bit position 8*i; cleared bits are zero
+            // bytes that were omitted from the wire. The original code advanced a running `shift`
+            // only on set bits, which packed the bytes contiguously and silently produced a
+            // CORRUPT guid: F130007F9B000202 came back as F1307F9B0202. That broke every guid in
+            // the client — object scans matched nothing, and the bogus values looked exactly like
+            // "the creature no longer exists," which sent this investigation down a phantom
+            // stale-guid path twice.
             for (int i = 0; i < 8 && stream.Remaining > 0; i++)
-            {
                 if ((guidmark & (1 << i)) != 0)
-                {
-                    guid |= ((UInt64)stream.ReadByte()) << shift;
-                    shift += 8;
-                }
-            }
+                    guid |= ((UInt64)stream.ReadByte()) << (8 * i);
+
             return guid;
         }
     }

@@ -14,8 +14,20 @@ namespace WotlkClient.Shared
                 try
                 {
                     format = string.Format("[{0}][{1}]{2}", Time.GetTime(), type, format);
-                    
-                    string msg = string.Format(format, parameters);
+
+                    // A bad format string (packet data containing '{', or a placeholder with no
+                    // matching arg) must NOT throw — it was aborting object-update parsing and
+                    // leaving ObjectMgr empty. Fall back to the raw string instead.
+                    string msg;
+                    try
+                    {
+                        msg = (parameters != null && parameters.Length > 0)
+                            ? string.Format(format, parameters) : format;
+                    }
+                    catch (FormatException)
+                    {
+                        msg = format;
+                    }
 
                     if (Config.LogToFile)
                     {

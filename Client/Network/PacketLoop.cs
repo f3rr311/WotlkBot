@@ -94,12 +94,30 @@ namespace WotlkClient.Network
                     }
                     try
                     {
-                        byte[] sizeBytes = OnReceive(2);
-                        dataSize = parseSize(sizeBytes);
-                        data = OnReceive(dataSize);
-                        decryptData(data);
+                        // WoW SMSG header is ARC4-encrypted and VARIABLE length: normally
+                        // 2-byte size + 2-byte opcode, but for packets >= 0x8000 the size is
+                        // 3 bytes with the high bit of the first byte set. The old code always
+                        // read a 2-byte size, so the first big packet (Stormwind's initial
+                        // object update) desynced the cipher stream and every packet after it
+                        // — including spell-damage logs — decoded to garbage.
+                        byte[] h0 = OnReceive(1);
+                        wClient.mCrypt.Decrypt(h0, 0, 1);
+                        int size;
+                        if ((h0[0] & 0x80) != 0)
+                        {
+                            byte[] rest = OnReceive(2);
+                            wClient.mCrypt.Decrypt(rest, 0, 2);
+                            size = ((h0[0] & 0x7F) << 16) | (rest[0] << 8) | rest[1];
+                        }
+                        else
+                        {
+                            byte[] h1 = OnReceive(1);
+                            wClient.mCrypt.Decrypt(h1, 0, 1);
+                            size = (h0[0] << 8) | h1[0];
+                        }
+                        data = OnReceive(size);               // opcode(2) + body
+                        wClient.mCrypt.Decrypt(data, 0, 2);   // decrypt the opcode only
                         PacketIn packet = new PacketIn(data);
-                        //Log.WriteLine(LogType.Network, packet.ToHex());
                         wClient.HandlePacket(packet);
                     }
                     catch (Exception ex)    // Server dc'd us most likely ;P
