@@ -100,20 +100,24 @@ namespace WotlkClient.Network
                         // read a 2-byte size, so the first big packet (Stormwind's initial
                         // object update) desynced the cipher stream and every packet after it
                         // — including spell-damage logs — decoded to garbage.
-                        byte[] h0 = OnReceive(1);
-                        wClient.mCrypt.Decrypt(h0, 0, 1);
+                        // Read TWO bytes up front, not one at a time. OnReceive costs an
+                        // unconditional Thread.Sleep(10) per call, so a byte-at-a-time header
+                        // adds a whole extra round-trip to EVERY packet (~33% throughput loss).
+                        // ARC4 is a stream cipher: decrypting 2 bytes then 1 more is identical
+                        // to decrypting 1 then 1 then 1, so reading ahead is safe. The 3rd byte
+                        // is fetched only for genuinely large packets, which are rare.
+                        byte[] hdr = OnReceive(2);
+                        wClient.mCrypt.Decrypt(hdr, 0, 2);
                         int size;
-                        if ((h0[0] & 0x80) != 0)
+                        if ((hdr[0] & 0x80) != 0)
                         {
-                            byte[] rest = OnReceive(2);
-                            wClient.mCrypt.Decrypt(rest, 0, 2);
-                            size = ((h0[0] & 0x7F) << 16) | (rest[0] << 8) | rest[1];
+                            byte[] h2 = OnReceive(1);
+                            wClient.mCrypt.Decrypt(h2, 0, 1);
+                            size = ((hdr[0] & 0x7F) << 16) | (hdr[1] << 8) | h2[0];
                         }
                         else
                         {
-                            byte[] h1 = OnReceive(1);
-                            wClient.mCrypt.Decrypt(h1, 0, 1);
-                            size = (h0[0] << 8) | h1[0];
+                            size = (hdr[0] << 8) | hdr[1];
                         }
                         data = OnReceive(size);               // opcode(2) + body
                         wClient.mCrypt.Decrypt(data, 0, 2);   // decrypt the opcode only
