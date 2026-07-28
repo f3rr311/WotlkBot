@@ -116,15 +116,38 @@ namespace WotlkClient.Clients
             float dy = player.Position.Y - target.Position.Y;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
+            // ⚠ ELEVATION IS PART OF BEING IN POSITION, AND `dist` DOES NOT CONTAIN IT.
+            //
+            // `dist` above is HORIZONTAL. This early-return used to test it alone, and that single
+            // omission cost three test rounds: the bot reported "already at 12.0 yd" and refused to
+            // move while standing 4.4 yd BELOW the dummy's platform, shooting at the ledge and
+            // failing 47 LINE_OF_SIGHT every time. Distance is a scalar; POSITION IS NOT — the same
+            // mistake as ignoring the bearing, one field further down.
+            float dzNow = player.Position.Z - target.Position.Z;
+            bool wrongLevel = Math.Abs(dzNow) > 2.0f;
+            bool arcing = Math.Abs(bearingDeg) > 0.01f;
+
             // Aim for the middle of the band, not its edge: the target may drift, and floating
             // point on the server side is not going to agree with ours to the last yard.
             float want;
             if (dist < minRange) want = Math.Min(minRange + 3.0f, (minRange + maxRange) / 2.0f);
             else if (dist > maxRange) want = Math.Max(maxRange - 3.0f, (minRange + maxRange) / 2.0f);
+            else if (arcing || wrongLevel)
+            {
+                // ⚠ DO NOT SHORT-CIRCUIT ON DISTANCE WHEN A BEARING OR A LEVEL CHANGE IS NEEDED.
+                //
+                // The first version returned early whenever the distance was legal, which made the
+                // bearing a no-op: the caller's line-of-sight retry re-cast from the identical
+                // blocked spot at 0, +45, -45 and +90 degrees and logged "already at 12.0 yd" every
+                // time. Four different bearings, one position. A bearing is a request for a
+                // DIFFERENT PLACE, not a different distance.
+                want = dist;                                   // keep the distance, change the spot
+            }
             else
             {
                 Console.WriteLine("RANGE: already at " + dist.ToString("F1")
-                    + " yd, band [" + minRange.ToString("F1") + "," + maxRange.ToString("F1") + "]");
+                    + " yd, band [" + minRange.ToString("F1") + "," + maxRange.ToString("F1")
+                    + "], dz " + dzNow.ToString("+0.0;-0.0") + " — in position");
                 return true;
             }
 
@@ -145,8 +168,18 @@ namespace WotlkClient.Clients
             }
             float destX = target.Position.X + ux * want;
             float destY = target.Position.Y + uy * want;
-            float destZ = player.Position.Z;                   // dummies are on flat ground
-            float travel = Math.Abs(want - dist);
+            // ⚠ THE TARGET'S Z, NOT OURS. The comment here used to read "dummies are on flat
+            // ground" — they are not. The Stormwind heroic dummy stands at z=103.0 on a RAISED
+            // PLATFORM, so carrying our own Z forward meant backing 7.5 yd off walked the bot DOWN
+            // to z=98.6, off the edge, and every cast after that returned 47 LINE_OF_SIGHT.
+            // Taking the target's Z keeps us on whatever surface the target is standing on.
+            float destZ = target.Position.Z;
+
+            // Travel distance is the CHORD, not the difference of radii. When arcing, `want` equals
+            // `dist` and the radial difference is zero — the old formula then slept ~150 ms and
+            // stopped the bot before it had gone anywhere.
+            float travel = (float)Math.Sqrt((destX - player.Position.X) * (destX - player.Position.X)
+                                          + (destY - player.Position.Y) * (destY - player.Position.Y));
 
             const float RUN_SPEED = 7.0f;                      // yards/sec, WotLK default
             int travelMs = (int)(travel / RUN_SPEED * 1000.0f) + 150;
@@ -169,6 +202,7 @@ namespace WotlkClient.Clients
             // the next FaceTarget computes its angle from the pre-move position and aims wrong.
             player.Position.X = destX;
             player.Position.Y = destY;
+            player.Position.Z = destZ;      // or the next wrongLevel test compares against a stale Z
 
             // Turn back to the target: we just faced our direction of travel, and backing off
             // means we are now looking AWAY from it. A directional spell would be refused with
@@ -179,9 +213,10 @@ namespace WotlkClient.Clients
             float nx = player.Position.X - target.Position.X;
             float ny = player.Position.Y - target.Position.Y;
             float now = (float)Math.Sqrt(nx * nx + ny * ny);
-            bool ok = now >= minRange && now <= maxRange;
-            Console.WriteLine("RANGE: now " + now.ToString("F1") + " yd — "
-                + (ok ? "IN BAND" : "STILL OUT OF BAND"));
+            float dzEnd = player.Position.Z - target.Position.Z;
+            bool ok = now >= minRange && now <= maxRange && Math.Abs(dzEnd) <= 2.0f;
+            Console.WriteLine("RANGE: now " + now.ToString("F1") + " yd, dz "
+                + dzEnd.ToString("+0.0;-0.0") + " — " + (ok ? "IN POSITION" : "STILL OUT"));
             return ok;
         }
 
