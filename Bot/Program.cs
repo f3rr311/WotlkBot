@@ -509,9 +509,40 @@ namespace WotlkBot
                                 + "'target entry <n>' (e.g. 31146) before 'cast'");
                             continue;
                         }
+                        // TASK #81 — optional RANGE BAND: `cast <id> <n> <delayMs> [min] [max]`.
+                        // Without it the bot casts from wherever it stands, which at a dummy is
+                        // point-blank, and every RANGED ability is refused with 128 TOO_CLOSE.
+                        // A refusal is not a measurement, so three whole 21-branch sweeps recorded
+                        // Ranger as "NO BUILD" when its engine was fine and merely ranged.
+                        // The caller supplies the band because Python already reads SpellRange.dbc
+                        // (minHostile/maxHostile) — the bot deliberately parses no DBCs.
+                        if (a.Length > 4)
+                        {
+                            float rmin = Single.Parse(a[4], System.Globalization.CultureInfo.InvariantCulture);
+                            float rmax = a.Length > 5
+                                ? Single.Parse(a[5], System.Globalization.CultureInfo.InvariantCulture)
+                                : rmin + 20.0f;
+                            if (!wclient.MoveToRange(target, rmin, rmax))
+                                System.Console.WriteLine("PARSE: could not reach the range band — "
+                                    + "casting anyway, but treat a refusal as POSITIONING, not a "
+                                    + "dead spell");
+                        }
                         CastBatch(target, tg, UInt32.Parse(a[1]),
                                   a.Length > 2 ? Int32.Parse(a[2]) : 8,
                                   a.Length > 3 ? Int32.Parse(a[3]) : 6500);
+                    }
+                    else if (a[0] == "moveto")
+                    {
+                        // `moveto <min> [max]` — position without casting, so a sweep can set up
+                        // once and then fire several batches, and so the band can be tested on
+                        // its own when a cast still fails.
+                        if (target == null) { System.Console.WriteLine("PARSE: no target"); continue; }
+                        float mn = Single.Parse(a[1], System.Globalization.CultureInfo.InvariantCulture);
+                        float mx = a.Length > 2
+                            ? Single.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture)
+                            : mn + 20.0f;
+                        System.Console.WriteLine("PARSE: moveto " + (wclient.MoveToRange(target, mn, mx)
+                            ? "IN BAND" : "FAILED"));
                     }
                     else if (a[0] == "attack")
                     {
