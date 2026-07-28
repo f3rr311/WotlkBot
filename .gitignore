@@ -4,3 +4,10 @@
 /obj
 /Gui/obj
 /tools/World
+# --- CoA harness runtime output (added by the fork) --------------------------
+/*.txt
+/*.prev
+/*.exe
+cmd-*.txt
+run*.txt
+sweep_*.txt

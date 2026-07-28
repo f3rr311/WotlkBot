@@ -54,11 +54,27 @@ namespace WotlkClient.Clients
             }
         }
 
+        // When true the bot joins any party it is invited to. The harness forms its own party
+        // (tank + healer + dps) to measure healing, threat and group buffs, so every bot except
+        // the leader needs to accept without a human in the loop.
+        public bool AutoAcceptGroupInvites = true;
+
         [PacketHandlerAtribute(WorldServerOpCode.SMSG_GROUP_INVITE)]
         public void HandleGroupInvite(PacketIn inpacket)
         {
             inpacket.ReadByte();
-            inviteCallBack(inpacket.ReadString());
+            string inviter = inpacket.ReadString();
+
+            // inviteCallBack was invoked unguarded — the bot never sets one, so ANY invite threw
+            // a NullReferenceException inside the packet loop and killed the handler thread.
+            if (inviteCallBack != null)
+                inviteCallBack(inviter);
+
+            if (AutoAcceptGroupInvites)
+            {
+                Console.WriteLine("PARTY: accepting invite from " + inviter);
+                AcceptInviteRequest();
+            }
         }
 
         public void AcceptInviteRequest()
@@ -66,6 +82,27 @@ namespace WotlkClient.Clients
             PacketOut packet = new PacketOut(WorldServerOpCode.CMSG_GROUP_ACCEPT);
             packet.Write((UInt32)0);
             Send(packet);
+        }
+
+        // Invite a character by name. Layout from the server's own HandleGroupInviteOpcode
+        // (GroupHandler.cpp:64): string membername, then a skipped uint32.
+        public void InviteToGroup(string memberName)
+        {
+            PacketOut packet = new PacketOut(WorldServerOpCode.CMSG_GROUP_INVITE);
+            packet.Write(memberName);
+            packet.Write((UInt32)0);
+            Send(packet);
+            Console.WriteLine("PARTY: invited " + memberName);
+        }
+
+        // A party caps at 5, so anything raid-sized must be converted. The server's
+        // HandleGroupRaidConvertOpcode (GroupHandler.cpp:634) ignores the body entirely.
+        // Call this BEFORE inviting members 6..40.
+        public void ConvertToRaid()
+        {
+            PacketOut packet = new PacketOut(WorldServerOpCode.CMSG_GROUP_RAID_CONVERT);
+            Send(packet);
+            Console.WriteLine("PARTY: converted to raid");
         }
 
 

@@ -60,7 +60,7 @@ namespace WotlkClient.Clients
                             ObjectMgr.GetInstance().addObject(getObject);
                         }
                         //HandleUpdateObjectFieldBlock(packet, getObject, updateGuid.GetTypeId());
-                        ReadValuesUpdateBlock(packet, updateGuid.GetTypeId());
+                        ReadValuesUpdateBlock(packet, updateGuid.GetTypeId(), getObject);
                         ObjectMgr.GetInstance().updateObject(getObject);
                         break;
 
@@ -78,7 +78,7 @@ namespace WotlkClient.Clients
                             ObjectMgr.GetInstance().addObject(obj);
                         }
                         ReadMovementUpdateBlock(packet, obj);
-                        ReadValuesUpdateBlock(packet, updateGuid.GetTypeId());
+                        ReadValuesUpdateBlock(packet, updateGuid.GetTypeId(), obj);
                         ObjectMgr.GetInstance().updateObject(obj);
                         break;
                         
@@ -103,7 +103,27 @@ namespace WotlkClient.Clients
             }
         }
 
-        private void ReadValuesUpdateBlock(PacketIn packet, ObjectType type)
+        /// <summary>
+        /// Read an update-values block and STORE the fields on the object.
+        ///
+        /// ⚠ THIS USED TO DISCARD EVERYTHING. The old body read each field with a bare
+        /// `packet.ReadUInt32();  // UpdateField blockVal =`, threw the value away, and was not even
+        /// given an object to write to. `Object.Fields[]` was allocated and never populated.
+        ///
+        /// That one stub is why the bot could see NO unit state:
+        ///   * its own health never updated - `CurrentHealth` was declared and never assigned - so
+        ///     the bot could not tell it had DIED and would keep running its rotation as a corpse,
+        ///     failing every cast until the window expired (task #72);
+        ///   * a HEALING test cannot know whether its target is actually damaged, which is the
+        ///     precondition that decides whether a heal measurement means anything at all;
+        ///   * a TANK test cannot watch the tank take damage.
+        /// All three of M4's blockers come back here.
+        ///
+        /// 3.3.5a format: a byte mask-size in 32-bit words, that many mask words, then ONE uint32
+        /// per set bit in ascending bit order. The old inner loop (`size = 1`) was dead code that
+        /// could never execute.
+        /// </summary>
+        private void ReadValuesUpdateBlock(PacketIn packet, ObjectType type, Object obj)
         {
             var maskSize = packet.ReadByte();
 
@@ -113,26 +133,20 @@ namespace WotlkClient.Clients
 
             var mask = new BitArray(updateMask);
 
-
             for (var i = 0; i < mask.Count; ++i)
             {
                 if (!mask[i])
                     continue;
 
-                packet.ReadUInt32();   // UpdateField blockVal = 
-                
-                int start = i;
-                int size = 1;
-                
-                for (int k = i - start + 1; k < size; ++k)
-                {
-                    int currentPosition = ++i;
-                    
-                    if (mask[currentPosition])
-                        packet.ReadUInt32();   // updateField = 
-
-                }
+                uint value = packet.ReadUInt32();
+                if (obj != null && obj.Fields != null && i < obj.Fields.Length)
+                    obj.Fields[i] = value;
             }
+
+            // Mirror OUR OWN vitals into the state layer so a rotation can react to them.
+            if (obj != null && player != null && obj.Guid.GetOldGuid() == player.Guid.GetOldGuid())
+                NoteSelfVitals((int)obj.Fields[(int)UpdateFields.UNIT_FIELD_HEALTH],
+                               (int)obj.Fields[(int)UpdateFields.UNIT_FIELD_MAXHEALTH]);
         }
 
         MovementFlagWotLK ReadMovementInfoLegacy(PacketIn packet, Object obj)

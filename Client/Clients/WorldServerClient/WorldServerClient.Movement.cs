@@ -38,6 +38,32 @@ namespace WotlkClient.Clients
             Console.WriteLine("move forward " + player.Name + ", " + position.ToString());
         }
 
+        // Turn to face a world point. Directional spells fail with SPELL_FAILED_UNIT_NOT_INFRONT
+        // (code 134) unless the server thinks the caster is looking at the target — a headless bot
+        // has no camera, so its orientation stays at whatever it logged in with and every cast is
+        // silently refused. Same movement block as MoveStop, only the orientation differs.
+        public void FaceTarget(float targetX, float targetY, uint time)
+        {
+            if (player == null || player.Position == null)
+                return;
+
+            float o = (float)Math.Atan2(targetY - player.Position.Y, targetX - player.Position.X);
+            if (o < 0) o += (float)(2 * Math.PI);          // server expects orientation in [0, 2pi)
+            player.Position.O = o;
+
+            PacketOut packet = new PacketOut(WorldServerOpCode.MSG_MOVE_SET_FACING);
+            AppendPackedGuid(player.Guid.GetOldGuid(), packet);
+            packet.Write((UInt32)0);    // movement flags — standing still
+            packet.Write((UInt16)0);    // flags2
+            packet.Write((UInt32)time);
+            packet.Write(player.Position.X);
+            packet.Write(player.Position.Y);
+            packet.Write(player.Position.Z);
+            packet.Write(o);
+            packet.Write((UInt32)0);    // falltime
+            Send(packet);
+        }
+
         public void MoveStop(Coordinate position, uint time)
         {
             PacketOut packet = new PacketOut(WorldServerOpCode.MSG_MOVE_STOP);

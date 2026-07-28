@@ -266,10 +266,29 @@ namespace WotlkClient.Clients
             Send(packet);
         }
 
+        // WoW auth result codes (AuthResult). Only the ones a bot realistically hits.
+        private static string AuthResultName(byte c)
+        {
+            switch (c)
+            {
+                case 0x03: return "BANNED";
+                case 0x04: return "UNKNOWN_ACCOUNT";
+                case 0x05: return "INCORRECT_PASSWORD";
+                case 0x06: return "ALREADY_ONLINE";
+                case 0x07: return "NO_TIME";
+                case 0x08: return "DB_BUSY";
+                case 0x09: return "VERSION_INVALID";
+                case 0x0C: return "SUSPENDED";
+                case 0x0D: return "NO_ACCESS";
+                default:   return "code 0x" + c.ToString("X2");
+            }
+        }
+
         [PacketHandlerAtribute(LogonServerOpCode.AUTH_LOGON_PROOF)]
         public void HandleLogonProof(PacketIn packetIn)
         {
-            if (packetIn.ReadByte() == 0x00)
+            byte result = packetIn.ReadByte();
+            if (result == 0x00)
             {
                 Log.WriteLine(LogType.Success, "Authenitcation successed. Requesting RealmList", prefix);
 
@@ -278,8 +297,18 @@ namespace WotlkClient.Clients
                     loginCompletedCallBack(0);
                 }
                 pLoop.Stop();
+                return;
             }
 
+            // Previously this branch did NOTHING — no log, no callback, no exit. A rejected login
+            // left the process spinning in Main's `while (true)` looking perfectly healthy, and the
+            // only symptom was an empty output file, which reads as "the run measured nothing"
+            // rather than "the run never started". Always surface the reason.
+            Console.WriteLine("PARSE: AUTH REJECTED — " + AuthResultName(result));
+            Log.WriteLine(LogType.Error, "Authentication failed: {0}", prefix, AuthResultName(result));
+            if (loginCompletedCallBack != null)
+                loginCompletedCallBack(result);
+            pLoop.Stop();
         }
 
         [PacketHandlerAtribute(LogonServerOpCode.REALM_LIST)]

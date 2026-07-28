@@ -353,8 +353,13 @@ namespace WotlkClient.Constants
         SMSG_DAMAGE_TAKEN_OBSOLETE = 333,  //(0x14D)
         SMSG_CANCEL_COMBAT = 334,  //(0x14E)
         SMSG_PLAYER_COMBAT_XP_GAIN_OBSOLETE = 335,  //(0x14F)
-        SMSG_HEALSPELL_ON_PLAYER_OBSOLETE = 336,  //(0x150)
-        SMSG_HEALSPELL_ON_PLAYERS_PET_OBSOLETE = 337,  //(0x151)
+        // 0x150/0x151 carried the VANILLA names SMSG_HEALSPELL_ON_PLAYER_OBSOLETE /
+        // SMSG_HEALSPELL_ON_PLAYERS_PET_OBSOLETE. In 3.3.5a they are the direct-heal and
+        // energize logs (src/ac src/server/game/Server/Protocol/Opcodes.h:366-367).
+        // Renamed rather than aliased so each value keeps exactly one name; nothing in this
+        // repo referenced the old names.
+        SMSG_SPELLHEALLOG = 336,  //(0x150)
+        SMSG_SPELLENERGIZELOG = 337,  //(0x151)
         CMSG_SHEATHE_OBSOLETE = 338,  //(0x152)
         CMSG_SAVE_PLAYER = 339,  //(0x153)
         CMSG_SETDEATHBINDPOINT = 340,  //(0x154)
@@ -940,6 +945,23 @@ namespace WotlkClient.Constants
 
         CMSG_QUESTGIVER_STATUS_MULTIPLE_QUERY = 1047,
         SMSG_QUESTGIVER_STATUS_MULTIPLE = 1048,
+
+        // ------------------------------------------------------------------------------------
+        // 3.3.5a opcodes this enum was missing entirely — the list above stops at 1048 and is
+        // largely vanilla-era. Values taken from the SERVER'S OWN
+        // src/server/game/Server/Protocol/Opcodes.h in C:\CoA\src\ac (lines 1181-1204), not from
+        // a wiki. Without these the harness could not see healing, threat, resources or auras,
+        // which left tanking, healing, CC and rotation validity unmeasurable (task #37 / M1).
+        // ------------------------------------------------------------------------------------
+        SMSG_HEALTH_UPDATE = 1151,  //(0x47F)  NOTE: AzerothCore never sends this — health rides
+                                    //         in UNIT_FIELD_HEALTH on SMSG_UPDATE_OBJECT.
+        SMSG_POWER_UPDATE = 1152,  //(0x480)
+        SMSG_HIGHEST_THREAT_UPDATE = 1154,  //(0x482)
+        SMSG_THREAT_UPDATE = 1155,  //(0x483)
+        SMSG_THREAT_REMOVE = 1156,  //(0x484)
+        SMSG_THREAT_CLEAR = 1157,  //(0x485)
+        SMSG_AURA_UPDATE_ALL = 1173,  //(0x495)
+        SMSG_AURA_UPDATE = 1174,  //(0x496)
 
 
         Maximum = 1500,
